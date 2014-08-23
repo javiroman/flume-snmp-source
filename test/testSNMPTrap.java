@@ -16,3 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  ***************************************************************/
+
+/**
+ * Hello world!
+ *
+ */
+public class testSNMPTrap
+{
+    public static void main( String[] args )
+    {
+        System.out.println( "Hello World!" );
+    }
+}
