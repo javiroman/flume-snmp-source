@@ -2,3 +2,4 @@ sendSNMPTrap.class
 testSNMPQuery2.class
 testSNMPQuery.class
 testSNMPTrap.class
+testSNMPGetBulk.class
