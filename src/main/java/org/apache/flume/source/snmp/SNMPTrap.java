@@ -18,7 +18,24 @@
  ***************************************************************/
 package org.apache.flume.source.snmp;
 
+import org.apache.flume.ChannelException;
+import org.apache.flume.Context;
+import org.apache.flume.CounterGroup;
+import org.apache.flume.Event;
+import org.apache.flume.event.SimpleEvent;
+import org.apache.flume.EventDrivenSource;
+import org.apache.flume.conf.Configurable;
+import org.apache.flume.conf.Configurables;
+import org.apache.flume.source.SyslogUtils;
+import org.apache.flume.event.EventBuilder;
+
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.Vector;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.snmp4j.CommandResponder;
 import org.snmp4j.CommandResponderEvent;
@@ -39,6 +56,7 @@ import org.snmp4j.smi.OctetString;
 import org.snmp4j.smi.TcpAddress;
 import org.snmp4j.smi.TransportIpAddress;
 import org.snmp4j.smi.UdpAddress;
+import org.snmp4j.smi.VariableBinding;
 import org.snmp4j.tools.console.SnmpRequest;
 import org.snmp4j.transport.AbstractTransportMapping;
 import org.snmp4j.transport.DefaultTcpTransportMapping;
@@ -46,8 +64,17 @@ import org.snmp4j.transport.DefaultUdpTransportMapping;
 import org.snmp4j.util.MultiThreadedMessageDispatcher;
 import org.snmp4j.util.ThreadPool;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class SNMPTrap implements CommandResponder
 {
+
+  private static final Logger logger = LoggerFactory
+      .getLogger(SNMPTrap.class);
+
+  private CounterGroup counterGroup = new CounterGroup();
+
   public SNMPTrap()
   {
   }
@@ -85,7 +112,7 @@ public class SNMPTrap implements CommandResponder
     snmp.addCommandResponder(this);
     
     transport.listen();
-    System.out.println("Listening on " + address);
+    logger.info("Listening on " + address);
 
     try {
       this.wait();
@@ -101,13 +128,47 @@ public class SNMPTrap implements CommandResponder
    */
   public synchronized void processPdu(CommandResponderEvent cmdRespEvent)
   {
-    System.out.println("Received PDU...");
+    logger.info("Received PDU...");
     PDU pdu = cmdRespEvent.getPDU();
 
     if (pdu != null) {
+      try {
+        Event event;
+        Map <String, String> headers;
+        StringBuilder stringBuilder = new StringBuilder();
 
-      System.out.println("Trap Type = " + pdu.getType());
-      System.out.println("Variable Bindings = " + pdu.getVariableBindings());
+        Vector<? extends VariableBinding> vbs = pdu.getVariableBindings();
+	    for (VariableBinding vb : vbs) {
+            stringBuilder.append(vb.getVariable().toString());
+			//System.out.println(vb.getVariable().toString());
+		}
+
+        String messageString = stringBuilder.toString();
+
+        byte[] message = messageString.getBytes();
+
+        event = new SimpleEvent();
+        headers = new HashMap<String, String>();
+        headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
+        logger.info("Message: {}", messageString);
+        event.setBody(message);
+        event.setHeaders(headers);
+
+        if (event == null) {
+          return;
+        }
+
+        getChannelProcessor().processEvent(event);
+        counterGroup.incrementAndGet("events.success");
+
+      } catch (ChannelException ex) {
+            counterGroup.incrementAndGet("events.dropped");
+            logger.error("Error writting to channel", ex);
+            return;
+      }
+
+      logger.info("Trap Type = " + pdu.getType());
+      logger.info("Variable Bindings = " + pdu.getVariableBindings());
       int pduType = pdu.getType();
 
       if ((pduType != PDU.TRAP) && (pduType != PDU.V1TRAP) 
@@ -131,6 +192,7 @@ public class SNMPTrap implements CommandResponder
           LogFactory.getLogger(SnmpRequest.class).error(ex);
         }
       }
+
     }
   }
 }

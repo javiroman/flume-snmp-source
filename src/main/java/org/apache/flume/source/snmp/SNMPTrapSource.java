@@ -25,11 +25,9 @@
  */
 package org.apache.flume.source;
 
-import java.net.InetSocketAddress;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import org.apache.flume.source.snmp.SNMPTrap;
+
+import java.io.IOException;
 
 import org.apache.flume.ChannelException;
 import org.apache.flume.Context;
@@ -40,16 +38,8 @@ import org.apache.flume.EventDrivenSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.source.SyslogUtils;
-import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
-import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
+
+import org.snmp4j.smi.UdpAddress;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,68 +52,22 @@ public class SNMPTrapSource extends AbstractSource
   private static final int DEFAULT_PORT = 5140;
   private static final String DEFAULT_BIND = "127.0.0.1";
 
-  private int maxsize = 1 << 16; // 64k is max allowable in RFC 5426
-  private Channel nettyChannel;
-  private Map<String, String> formaterProp;
-
   private static final Logger logger = LoggerFactory
       .getLogger(SNMPTrapSource.class);
 
   private CounterGroup counterGroup = new CounterGroup();
 
-  public class snmptrapHandler extends SimpleChannelHandler {
-    @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent mEvent) {
-      try {
-        byte[] message;
-        Map <String, String> headers;
-        Event event;
-        int i = 0;
-
-        ChannelBuffer nettyBuff = (ChannelBuffer) mEvent.getMessage();
-
-        message = new byte[1 << 16];
-        while (nettyBuff.readable()) {
-            message[i] = nettyBuff.readByte();
-            i++;
-        }
-
-        event = new SimpleEvent();
-        headers = new HashMap<String, String>();
-        headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
-        logger.info("Message: {}", new String(message));
-        event.setBody(message);
-        event.setHeaders(headers);
-
-        if (event == null) {
-          return;
-        }
-        getChannelProcessor().processEvent(event);
-        counterGroup.incrementAndGet("events.success");
-      } catch (ChannelException ex) {
-        counterGroup.incrementAndGet("events.dropped");
-        logger.error("Error writting to channel", ex);
-        return;
-      }
-    }
-  }
-
   @Override
   public void start() {
-    // setup Netty server
-    ConnectionlessBootstrap serverBootstrap = new ConnectionlessBootstrap
-        (new OioDatagramChannelFactory(Executors.newCachedThreadPool()));
-
-    final snmptrapHandler handler = new snmptrapHandler();
-    
-    serverBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
-      @Override
-      public ChannelPipeline getPipeline() {
-       return Channels.pipeline(handler);
-      }
-     });
-
-    nettyChannel = serverBootstrap.bind(new InetSocketAddress(bindAddress, bindPort));
+    // setup snmp4j trap server
+    SNMPTrap snmp4jTrapReceiver = new SNMPTrap();
+    try {
+        snmp4jTrapReceiver.listen(new UdpAddress(bindAddress + "/" + bindPort));
+    }
+    catch (IOException e) {
+        logger.info("Error in Listening for Trap");
+        logger.info("Exception Message = ", e.getMessage());
+    }
 
     super.start();
   }
@@ -132,16 +76,6 @@ public class SNMPTrapSource extends AbstractSource
   public void stop() {
     logger.info("SNMPTrap Source stopping...");
     logger.info("Metrics:{}", counterGroup);
-    if (nettyChannel != null) {
-      nettyChannel.close();
-      try {
-        nettyChannel.getCloseFuture().await(60, TimeUnit.SECONDS);
-      } catch (InterruptedException e) {
-        logger.warn("netty server stop interrupted", e);
-      } finally {
-        nettyChannel = null;
-      }
-    }
 
     super.stop();
   }
