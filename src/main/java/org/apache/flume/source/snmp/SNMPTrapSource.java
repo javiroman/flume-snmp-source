@@ -78,19 +78,20 @@ public class SNMPTrapSource extends AbstractSource
         byte[] message;
         Map <String, String> headers;
         Event event;
+        int i = 0;
 
-        ChannelBuffer in = (ChannelBuffer) mEvent.getMessage();
+        ChannelBuffer nettyBuff = (ChannelBuffer) mEvent.getMessage();
 
-        message = new byte[1];
-
-        while (in.readable()) {
-            message[0] = in.readByte();
+        message = new byte[1 << 16];
+        while (nettyBuff.readable()) {
+            message[i] = nettyBuff.readByte();
+            i++;
         }
 
         event = new SimpleEvent();
         headers = new HashMap<String, String>();
         headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
-        logger.info("Message: {}", message);
+        logger.info("Message: {}", new String(message));
         event.setBody(message);
         event.setHeaders(headers);
 
