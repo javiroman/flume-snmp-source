@@ -40,7 +40,8 @@ public class sendSNMPTrap
 
   public static final String  ipAddress      = "127.0.0.1";
   
-  public static final int     port      = 163;
+  //public static final int     port      = 163;
+  public static final int     port      = 5140;
   
   public sendSNMPTrap()
   {

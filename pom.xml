@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.apache.flume.flume-ng-sources</groupId>
-  <artifactId>flume-ng-sql-source</artifactId>
+  <artifactId>flume-ng-snmp-source</artifactId>
   <version>0.0.1</version>
 
   <name>flume-snmp-source</name>

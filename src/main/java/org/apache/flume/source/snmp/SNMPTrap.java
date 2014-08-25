@@ -16,7 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  ***************************************************************/
+package org.apache.flume.source.snmp;
+
 import java.io.IOException;
+
 import org.snmp4j.CommandResponder;
 import org.snmp4j.CommandResponderEvent;
 import org.snmp4j.CommunityTarget;
@@ -43,25 +46,10 @@ import org.snmp4j.transport.DefaultUdpTransportMapping;
 import org.snmp4j.util.MultiThreadedMessageDispatcher;
 import org.snmp4j.util.ThreadPool;
 
-public class testSNMPTrap implements CommandResponder
+public class SNMPTrap implements CommandResponder
 {
-  public testSNMPTrap()
+  public SNMPTrap()
   {
-  }
-
-  public static void main(String[] args)
-  {
-    testSNMPTrap snmp4jTrapReceiver = new testSNMPTrap();
-    try
-    {
-      //snmp4jTrapReceiver.listen(new UdpAddress("localhost/163"));
-      snmp4jTrapReceiver.listen(new UdpAddress("localhost/5140"));
-    }
-    catch (IOException e)
-    {
-      System.err.println("Error in Listening for Trap");
-      System.err.println("Exception Message = " + e.getMessage());
-    }
   }
 
   /**
@@ -70,17 +58,16 @@ public class testSNMPTrap implements CommandResponder
   public synchronized void listen(TransportIpAddress address) throws IOException
   {
     AbstractTransportMapping transport;
-    if (address instanceof TcpAddress)
-    {
+
+    if (address instanceof TcpAddress) {
       transport = new DefaultTcpTransportMapping((TcpAddress) address);
-    }
-    else
-    {
+    } else {
       transport = new DefaultUdpTransportMapping((UdpAddress) address);
     }
 
     ThreadPool threadPool = ThreadPool.create("DispatcherPool", 10);
-    MessageDispatcher mtDispatcher = new MultiThreadedMessageDispatcher(threadPool, new MessageDispatcherImpl());
+    MessageDispatcher mtDispatcher = new MultiThreadedMessageDispatcher(threadPool, 
+            new MessageDispatcherImpl());
 
     // add message processing models
     mtDispatcher.addMessageProcessingModel(new MPv1());
@@ -92,7 +79,7 @@ public class testSNMPTrap implements CommandResponder
 
     //Create Target
     CommunityTarget target = new CommunityTarget();
-    target.setCommunity( new OctetString("public"));
+    target.setCommunity(new OctetString("public"));
     
     Snmp snmp = new Snmp(mtDispatcher, transport);
     snmp.addCommandResponder(this);
@@ -100,46 +87,46 @@ public class testSNMPTrap implements CommandResponder
     transport.listen();
     System.out.println("Listening on " + address);
 
-    try
-    {
+    try {
       this.wait();
     }
-    catch (InterruptedException ex)
-    {
+    catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
     }
   }
 
   /**
-   * This method will be called whenever a pdu is received on the given port specified in the listen() method
+   * This method will be called whenever a pdu is received on the 
+   * given port specified in the listen() method.
    */
   public synchronized void processPdu(CommandResponderEvent cmdRespEvent)
   {
     System.out.println("Received PDU...");
     PDU pdu = cmdRespEvent.getPDU();
-    if (pdu != null)
-    {
+
+    if (pdu != null) {
 
       System.out.println("Trap Type = " + pdu.getType());
       System.out.println("Variable Bindings = " + pdu.getVariableBindings());
       int pduType = pdu.getType();
-      if ((pduType != PDU.TRAP) && (pduType != PDU.V1TRAP) && (pduType != PDU.REPORT)
-      && (pduType != PDU.RESPONSE))
-      {
+
+      if ((pduType != PDU.TRAP) && (pduType != PDU.V1TRAP) 
+              && (pduType != PDU.REPORT) && (pduType != PDU.RESPONSE)) {
         pdu.setErrorIndex(0);
         pdu.setErrorStatus(0);
         pdu.setType(PDU.RESPONSE);
         StatusInformation statusInformation = new StatusInformation();
         StateReference ref = cmdRespEvent.getStateReference();
-        try
-        {
+
+        try {
           System.out.println(cmdRespEvent.getPDU());
           cmdRespEvent.getMessageDispatcher().returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
-          cmdRespEvent.getSecurityModel(), cmdRespEvent.getSecurityName(), cmdRespEvent.getSecurityLevel(),
-          pdu, cmdRespEvent.getMaxSizeResponsePDU(), ref, statusInformation);
+            cmdRespEvent.getSecurityModel(), 
+            cmdRespEvent.getSecurityName(), 
+            cmdRespEvent.getSecurityLevel(),
+            pdu, cmdRespEvent.getMaxSizeResponsePDU(), ref, statusInformation);
         }
-        catch (MessageException ex)
-        {
+        catch (MessageException ex) {
           System.err.println("Error while sending response: " + ex.getMessage());
           LogFactory.getLogger(SnmpRequest.class).error(ex);
         }
@@ -147,3 +134,4 @@ public class testSNMPTrap implements CommandResponder
     }
   }
 }
+
