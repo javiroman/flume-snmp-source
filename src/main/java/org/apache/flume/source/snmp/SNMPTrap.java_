@@ -28,6 +28,8 @@ import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.source.SyslogUtils;
 import org.apache.flume.event.EventBuilder;
+import org.apache.flume.source.AbstractSource;
+import org.apache.flume.channel.ChannelProcessor;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -138,10 +140,10 @@ public class SNMPTrap implements CommandResponder
         StringBuilder stringBuilder = new StringBuilder();
 
         Vector<? extends VariableBinding> vbs = pdu.getVariableBindings();
-	    for (VariableBinding vb : vbs) {
+	for (VariableBinding vb : vbs) {
             stringBuilder.append(vb.getVariable().toString());
-			//System.out.println(vb.getVariable().toString());
-		}
+	    //System.out.println(vb.getVariable().toString());
+        }
 
         String messageString = stringBuilder.toString();
 
@@ -158,7 +160,9 @@ public class SNMPTrap implements CommandResponder
           return;
         }
 
+	// store the event to underlying channels(s)
         getChannelProcessor().processEvent(event);
+
         counterGroup.incrementAndGet("events.success");
 
       } catch (ChannelException ex) {

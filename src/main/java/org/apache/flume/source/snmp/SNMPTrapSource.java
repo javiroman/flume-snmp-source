@@ -25,8 +25,6 @@
  */
 package org.apache.flume.source;
 
-import org.apache.flume.source.snmp.SNMPTrap;
-
 import java.io.IOException;
 
 import org.apache.flume.ChannelException;
@@ -39,49 +37,204 @@ import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.source.SyslogUtils;
 
+import org.snmp4j.CommandResponder;
+import org.snmp4j.CommandResponderEvent;
+import org.snmp4j.CommunityTarget;
+import org.snmp4j.MessageDispatcher;
+import org.snmp4j.MessageDispatcherImpl;
+import org.snmp4j.MessageException;
+import org.snmp4j.PDU;
+import org.snmp4j.Snmp;
+import org.snmp4j.log.LogFactory;
+import org.snmp4j.mp.MPv1;
+import org.snmp4j.mp.MPv2c;
+import org.snmp4j.mp.StateReference;
+import org.snmp4j.mp.StatusInformation;
+import org.snmp4j.security.Priv3DES;
+import org.snmp4j.security.SecurityProtocols;
+import org.snmp4j.smi.OctetString;
+import org.snmp4j.smi.TcpAddress;
+import org.snmp4j.smi.TransportIpAddress;
 import org.snmp4j.smi.UdpAddress;
+import org.snmp4j.smi.VariableBinding;
+import org.snmp4j.tools.console.SnmpRequest;
+import org.snmp4j.transport.AbstractTransportMapping;
+import org.snmp4j.transport.DefaultTcpTransportMapping;
+import org.snmp4j.transport.DefaultUdpTransportMapping;
+import org.snmp4j.util.MultiThreadedMessageDispatcher;
+import org.snmp4j.util.ThreadPool;
+
+import java.util.Vector;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SNMPTrapSource extends AbstractSource
-      implements EventDrivenSource, Configurable {
+    implements EventDrivenSource, Configurable {
 
-  private String bindAddress;
-  private int bindPort;
-  private static final int DEFAULT_PORT = 5140;
-  private static final String DEFAULT_BIND = "127.0.0.1";
+    private String bindAddress;
+    private int bindPort;
+    private static final int DEFAULT_PORT = 5140;
+    private static final String DEFAULT_BIND = "127.0.0.1";
 
-  private static final Logger logger = LoggerFactory
-      .getLogger(SNMPTrapSource.class);
+    private static final Logger logger = LoggerFactory
+        .getLogger(SNMPTrapSource.class);
 
-  private CounterGroup counterGroup = new CounterGroup();
+    private CounterGroup counterGroup = new CounterGroup();
 
-  @Override
-  public void start() {
-    // setup snmp4j trap server
-    SNMPTrap snmp4jTrapReceiver = new SNMPTrap();
-    try {
-        snmp4jTrapReceiver.listen(new UdpAddress(bindAddress + "/" + bindPort));
+    public class SNMPTrapHandler implements CommandResponder
+    {
+
+        private CounterGroup counterGroup = new CounterGroup();
+
+        /**
+         * This method will listen for traps and response pdu's from SNMP agent.
+         */
+        public synchronized void listen(TransportIpAddress address) throws IOException
+        {
+            AbstractTransportMapping transport;
+
+            if (address instanceof TcpAddress) {
+                transport = new DefaultTcpTransportMapping((TcpAddress) address);
+            } else {
+                transport = new DefaultUdpTransportMapping((UdpAddress) address);
+            }
+
+            ThreadPool threadPool = ThreadPool.create("DispatcherPool", 10);
+            MessageDispatcher mtDispatcher = new MultiThreadedMessageDispatcher(threadPool, 
+                    new MessageDispatcherImpl());
+
+            // add message processing models
+            mtDispatcher.addMessageProcessingModel(new MPv1());
+            mtDispatcher.addMessageProcessingModel(new MPv2c());
+
+            // add all security protocols
+            SecurityProtocols.getInstance().addDefaultProtocols();
+            SecurityProtocols.getInstance().addPrivacyProtocol(new Priv3DES());
+
+            //Create Target
+            CommunityTarget target = new CommunityTarget();
+            target.setCommunity(new OctetString("public"));
+
+            Snmp snmp = new Snmp(mtDispatcher, transport);
+            snmp.addCommandResponder(this);
+
+            transport.listen();
+            logger.info("Listening on " + address);
+
+            try {
+                this.wait();
+            }
+            catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        /**
+         * This method will be called whenever a pdu is received on the 
+         * given port specified in the listen() method.
+         */
+        public synchronized void processPdu(CommandResponderEvent cmdRespEvent)
+        {
+            logger.info("Received PDU...");
+            PDU pdu = cmdRespEvent.getPDU();
+
+            if (pdu != null) {
+                try {
+                    Event event;
+                    Map <String, String> headers;
+                    StringBuilder stringBuilder = new StringBuilder();
+
+                    Vector<? extends VariableBinding> vbs = pdu.getVariableBindings();
+                    for (VariableBinding vb : vbs) {
+                        stringBuilder.append(vb.getVariable().toString());
+                        //System.out.println(vb.getVariable().toString());
+                    }
+
+                    String messageString = stringBuilder.toString();
+
+                    byte[] message = messageString.getBytes();
+
+                    event = new SimpleEvent();
+                    headers = new HashMap<String, String>();
+                    headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
+                    logger.info("Message: {}", messageString);
+                    event.setBody(message);
+                    event.setHeaders(headers);
+
+                    if (event == null) {
+                        return;
+                    }
+
+                    // store the event to underlying channels(s)
+                    getChannelProcessor().processEvent(event);
+
+                    counterGroup.incrementAndGet("events.success");
+
+                } catch (ChannelException ex) {
+                    counterGroup.incrementAndGet("events.dropped");
+                    logger.error("Error writting to channel", ex);
+                    return;
+                }
+
+                logger.info("Trap Type = " + pdu.getType());
+                logger.info("Variable Bindings = " + pdu.getVariableBindings());
+                int pduType = pdu.getType();
+
+                if ((pduType != PDU.TRAP) && (pduType != PDU.V1TRAP) 
+                        && (pduType != PDU.REPORT) && (pduType != PDU.RESPONSE)) {
+                    pdu.setErrorIndex(0);
+                    pdu.setErrorStatus(0);
+                    pdu.setType(PDU.RESPONSE);
+                    StatusInformation statusInformation = new StatusInformation();
+                    StateReference ref = cmdRespEvent.getStateReference();
+
+                    try {
+                        System.out.println(cmdRespEvent.getPDU());
+                        cmdRespEvent.getMessageDispatcher().returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
+                                cmdRespEvent.getSecurityModel(), 
+                                cmdRespEvent.getSecurityName(), 
+                                cmdRespEvent.getSecurityLevel(),
+                                pdu, cmdRespEvent.getMaxSizeResponsePDU(), ref, statusInformation);
+                    }
+                    catch (MessageException ex) {
+                        System.err.println("Error while sending response: " + ex.getMessage());
+                        LogFactory.getLogger(SnmpRequest.class).error(ex);
+                    }
+                        }
+
+            }
+        }
     }
-    catch (IOException e) {
-        logger.info("Error in Listening for Trap");
-        logger.info("Exception Message = ", e.getMessage());
+
+    @Override
+    public void start() {
+        SNMPTrapHandler snmp4jTrapReceiver = new SNMPTrapHandler();
+        try {
+            snmp4jTrapReceiver.listen(new UdpAddress(bindAddress + "/" + bindPort));
+        }
+        catch (IOException e) {
+            logger.info("Error in Listening for Trap");
+            logger.info("Exception Message = ", e.getMessage());
+        }
+
+        super.start();
     }
 
-    super.start();
-  }
+    @Override
+    public void stop() {
+        logger.info("SNMPTrap Source stopping...");
+        logger.info("Metrics:{}", counterGroup);
 
-  @Override
-  public void stop() {
-    logger.info("SNMPTrap Source stopping...");
-    logger.info("Metrics:{}", counterGroup);
+        super.stop();
+    }
 
-    super.stop();
-  }
-
-  @Override
-  public void configure(Context context) {
+    @Override
+    public void configure(Context context) {
         /*
          * Default is to listen on UDP port 162 on all IPv4 interfaces. 
          * Since 162 is a privileged port, snmptrapd must typically be run as root. 
@@ -89,6 +242,6 @@ public class SNMPTrapSource extends AbstractSource
          */
         bindAddress = context.getString("bind", DEFAULT_BIND);
         bindPort = context.getInteger("port", DEFAULT_PORT);
-  }
+    }
 
 }
