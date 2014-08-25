@@ -16,6 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
+/*
+ *  The pollable source will get regularly polled by the source runner asking it 
+ *  to generate events. Nevertheless this is a event driven source which is 
+ *  responsible for generating the events itself and normally does this 
+ *  in response to some event happening, in this case the SNMP Trap.
+ */
 package org.apache.flume.source;
 
 import java.net.InetSocketAddress;
@@ -45,7 +52,7 @@ import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SyslogUDPSource extends AbstractSource
+public class SNMPTrap AbstractSource
       implements EventDrivenSource, Configurable {
 
   private int port;
@@ -55,10 +62,12 @@ public class SyslogUDPSource extends AbstractSource
   private Map<String, String> formaterProp;
 
   private static final Logger logger = LoggerFactory
-      .getLogger(SyslogUDPSource.class);
+      .getLogger(SNMPTrap.class);
 
   private CounterGroup counterGroup = new CounterGroup();
+
   public class syslogHandler extends SimpleChannelHandler {
+
     private SyslogUtils syslogUtils = new SyslogUtils(true);
 
     public void setFormater(Map<String, String> prop) {
@@ -128,10 +137,10 @@ public class SyslogUDPSource extends AbstractSource
   public void configure(Context context) {
     Configurables.ensureRequiredNonNull(
         context, SyslogSourceConfigurationConstants.CONFIG_PORT);
+
     port = context.getInteger(SyslogSourceConfigurationConstants.CONFIG_PORT);
     host = context.getString(SyslogSourceConfigurationConstants.CONFIG_HOST);
-    formaterProp = context.getSubProperties(
-        SyslogSourceConfigurationConstants.CONFIG_FORMAT_PREFIX);
+
   }
 
 }
