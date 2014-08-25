@@ -17,15 +17,14 @@
  * under the License.
  */
 
-/*
- *  The pollable source will get regularly polled by the source runner asking it 
- *  to generate events. Nevertheless this is a event driven source which is 
- *  responsible for generating the events itself and normally does this 
- *  in response to some event happening, in this case the SNMP Trap.
- */
 package org.apache.flume.source;
 
 import java.io.IOException;
+import java.util.Vector;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.flume.ChannelException;
 import org.apache.flume.Context;
@@ -64,15 +63,15 @@ import org.snmp4j.transport.DefaultUdpTransportMapping;
 import org.snmp4j.util.MultiThreadedMessageDispatcher;
 import org.snmp4j.util.ThreadPool;
 
-import java.util.Vector;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/*
+ *  The pollable source will get regularly polled by the source runner asking it 
+ *  to generate events. Nevertheless this is a event driven source which is 
+ *  responsible for generating the events itself and normally does this 
+ *  in response to some event happening, in this case the SNMP Trap.
+ */
 public class SNMPTrapSource extends AbstractSource
     implements EventDrivenSource, Configurable {
 
@@ -88,7 +87,6 @@ public class SNMPTrapSource extends AbstractSource
 
     public class SNMPTrapHandler implements CommandResponder
     {
-
         private CounterGroup counterGroup = new CounterGroup();
 
         /**
@@ -149,18 +147,24 @@ public class SNMPTrapSource extends AbstractSource
                     Map <String, String> headers;
                     StringBuilder stringBuilder = new StringBuilder();
 
+		    // getVariableBindings: Gets the variable binding vector.
                     Vector<? extends VariableBinding> vbs = pdu.getVariableBindings();
                     for (VariableBinding vb : vbs) {
-                        stringBuilder.append(vb.getVariable().toString());
-                        //System.out.println(vb.getVariable().toString());
+			// To extract only the value of the OID
+                        //stringBuilder.append(vb.getVariable().toString());
+                        stringBuilder.append(vb.toString() + ",");
                     }
 
                     String messageString = stringBuilder.toString();
+
+		    // trick: remove the last comma
+		    messageString = messageString.replaceAll(",$", "");
 
                     byte[] message = messageString.getBytes();
 
                     event = new SimpleEvent();
                     headers = new HashMap<String, String>();
+
                     headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
                     logger.info("Message: {}", messageString);
                     event.setBody(message);
@@ -182,7 +186,8 @@ public class SNMPTrapSource extends AbstractSource
                 }
 
                 logger.info("Trap Type = " + pdu.getType());
-                logger.info("Variable Bindings = " + pdu.getVariableBindings());
+                logger.info("Variable Bindings = " + vbs;
+
                 int pduType = pdu.getType();
 
                 if ((pduType != PDU.TRAP) && (pduType != PDU.V1TRAP) 
@@ -195,18 +200,19 @@ public class SNMPTrapSource extends AbstractSource
 
                     try {
                         System.out.println(cmdRespEvent.getPDU());
-                        cmdRespEvent.getMessageDispatcher().returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
-                                cmdRespEvent.getSecurityModel(), 
-                                cmdRespEvent.getSecurityName(), 
-                                cmdRespEvent.getSecurityLevel(),
-                                pdu, cmdRespEvent.getMaxSizeResponsePDU(), ref, statusInformation);
+                        cmdRespEvent.getMessageDispatcher()
+				.returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
+                                	cmdRespEvent.getSecurityModel(), 
+                                	cmdRespEvent.getSecurityName(), 
+                                	cmdRespEvent.getSecurityLevel(),
+                                	pdu, cmdRespEvent.getMaxSizeResponsePDU(), 
+					ref, statusInformation);
                     }
                     catch (MessageException ex) {
                         System.err.println("Error while sending response: " + ex.getMessage());
                         LogFactory.getLogger(SnmpRequest.class).error(ex);
                     }
-                        }
-
+                 }
             }
         }
     }
