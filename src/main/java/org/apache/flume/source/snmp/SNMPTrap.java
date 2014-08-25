@@ -1,4 +1,4 @@
-/***************************************************************
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -6,132 +6,132 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *  
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- *  
+ *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
  * KIND, either express or implied.  See the License for the
  * specific language governing permissions and limitations
  * under the License.
- ***************************************************************/
-package org.apache.flume.source.snmp;
+ */
+package org.apache.flume.source;
 
-import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
-import org.snmp4j.CommandResponder;
-import org.snmp4j.CommandResponderEvent;
-import org.snmp4j.CommunityTarget;
-import org.snmp4j.MessageDispatcher;
-import org.snmp4j.MessageDispatcherImpl;
-import org.snmp4j.MessageException;
-import org.snmp4j.PDU;
-import org.snmp4j.Snmp;
-import org.snmp4j.log.LogFactory;
-import org.snmp4j.mp.MPv1;
-import org.snmp4j.mp.MPv2c;
-import org.snmp4j.mp.StateReference;
-import org.snmp4j.mp.StatusInformation;
-import org.snmp4j.security.Priv3DES;
-import org.snmp4j.security.SecurityProtocols;
-import org.snmp4j.smi.OctetString;
-import org.snmp4j.smi.TcpAddress;
-import org.snmp4j.smi.TransportIpAddress;
-import org.snmp4j.smi.UdpAddress;
-import org.snmp4j.tools.console.SnmpRequest;
-import org.snmp4j.transport.AbstractTransportMapping;
-import org.snmp4j.transport.DefaultTcpTransportMapping;
-import org.snmp4j.transport.DefaultUdpTransportMapping;
-import org.snmp4j.util.MultiThreadedMessageDispatcher;
-import org.snmp4j.util.ThreadPool;
+import org.apache.flume.ChannelException;
+import org.apache.flume.Context;
+import org.apache.flume.CounterGroup;
+import org.apache.flume.Event;
+import org.apache.flume.EventDrivenSource;
+import org.apache.flume.conf.Configurable;
+import org.apache.flume.conf.Configurables;
+import org.apache.flume.source.SyslogUtils;
+import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelPipeline;
+import org.jboss.netty.channel.ChannelPipelineFactory;
+import org.jboss.netty.channel.Channels;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelHandler;
+import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
 
-public class SNMPTrap implements CommandResponder
-{
-  public SNMPTrap()
-  {
-  }
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-  /**
-   * This method will listen for traps and response pdu's from SNMP agent.
-   */
-  public synchronized void listen(TransportIpAddress address) throws IOException
-  {
-    AbstractTransportMapping transport;
+public class SyslogUDPSource extends AbstractSource
+      implements EventDrivenSource, Configurable {
 
-    if (address instanceof TcpAddress) {
-      transport = new DefaultTcpTransportMapping((TcpAddress) address);
-    } else {
-      transport = new DefaultUdpTransportMapping((UdpAddress) address);
+  private int port;
+  private int maxsize = 1 << 16; // 64k is max allowable in RFC 5426
+  private String host = null;
+  private Channel nettyChannel;
+  private Map<String, String> formaterProp;
+
+  private static final Logger logger = LoggerFactory
+      .getLogger(SyslogUDPSource.class);
+
+  private CounterGroup counterGroup = new CounterGroup();
+  public class syslogHandler extends SimpleChannelHandler {
+    private SyslogUtils syslogUtils = new SyslogUtils(true);
+
+    public void setFormater(Map<String, String> prop) {
+      syslogUtils.addFormats(prop);
     }
 
-    ThreadPool threadPool = ThreadPool.create("DispatcherPool", 10);
-    MessageDispatcher mtDispatcher = new MultiThreadedMessageDispatcher(threadPool, 
-            new MessageDispatcherImpl());
-
-    // add message processing models
-    mtDispatcher.addMessageProcessingModel(new MPv1());
-    mtDispatcher.addMessageProcessingModel(new MPv2c());
-
-    // add all security protocols
-    SecurityProtocols.getInstance().addDefaultProtocols();
-    SecurityProtocols.getInstance().addPrivacyProtocol(new Priv3DES());
-
-    //Create Target
-    CommunityTarget target = new CommunityTarget();
-    target.setCommunity(new OctetString("public"));
-    
-    Snmp snmp = new Snmp(mtDispatcher, transport);
-    snmp.addCommandResponder(this);
-    
-    transport.listen();
-    System.out.println("Listening on " + address);
-
-    try {
-      this.wait();
-    }
-    catch (InterruptedException ex) {
-      Thread.currentThread().interrupt();
-    }
-  }
-
-  /**
-   * This method will be called whenever a pdu is received on the 
-   * given port specified in the listen() method.
-   */
-  public synchronized void processPdu(CommandResponderEvent cmdRespEvent)
-  {
-    System.out.println("Received PDU...");
-    PDU pdu = cmdRespEvent.getPDU();
-
-    if (pdu != null) {
-
-      System.out.println("Trap Type = " + pdu.getType());
-      System.out.println("Variable Bindings = " + pdu.getVariableBindings());
-      int pduType = pdu.getType();
-
-      if ((pduType != PDU.TRAP) && (pduType != PDU.V1TRAP) 
-              && (pduType != PDU.REPORT) && (pduType != PDU.RESPONSE)) {
-        pdu.setErrorIndex(0);
-        pdu.setErrorStatus(0);
-        pdu.setType(PDU.RESPONSE);
-        StatusInformation statusInformation = new StatusInformation();
-        StateReference ref = cmdRespEvent.getStateReference();
-
-        try {
-          System.out.println(cmdRespEvent.getPDU());
-          cmdRespEvent.getMessageDispatcher().returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
-            cmdRespEvent.getSecurityModel(), 
-            cmdRespEvent.getSecurityName(), 
-            cmdRespEvent.getSecurityLevel(),
-            pdu, cmdRespEvent.getMaxSizeResponsePDU(), ref, statusInformation);
+    @Override
+    public void messageReceived(ChannelHandlerContext ctx, MessageEvent mEvent) {
+      try {
+        syslogUtils.setEventSize(maxsize);
+        Event e = syslogUtils.extractEvent((ChannelBuffer)mEvent.getMessage());
+        if (e == null) {
+          return;
         }
-        catch (MessageException ex) {
-          System.err.println("Error while sending response: " + ex.getMessage());
-          LogFactory.getLogger(SnmpRequest.class).error(ex);
-        }
+        getChannelProcessor().processEvent(e);
+        counterGroup.incrementAndGet("events.success");
+      } catch (ChannelException ex) {
+        counterGroup.incrementAndGet("events.dropped");
+        logger.error("Error writting to channel", ex);
+        return;
       }
     }
   }
-}
 
+  @Override
+  public void start() {
+    // setup Netty server
+    ConnectionlessBootstrap serverBootstrap = new ConnectionlessBootstrap
+        (new OioDatagramChannelFactory(Executors.newCachedThreadPool()));
+    final syslogHandler handler = new syslogHandler();
+    handler.setFormater(formaterProp);
+    serverBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
+      @Override
+      public ChannelPipeline getPipeline() {
+       return Channels.pipeline(handler);
+      }
+     });
+
+    if (host == null) {
+      nettyChannel = serverBootstrap.bind(new InetSocketAddress(port));
+    } else {
+      nettyChannel = serverBootstrap.bind(new InetSocketAddress(host, port));
+    }
+
+    super.start();
+  }
+
+  @Override
+  public void stop() {
+    logger.info("Syslog UDP Source stopping...");
+    logger.info("Metrics:{}", counterGroup);
+    if (nettyChannel != null) {
+      nettyChannel.close();
+      try {
+        nettyChannel.getCloseFuture().await(60, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        logger.warn("netty server stop interrupted", e);
+      } finally {
+        nettyChannel = null;
+      }
+    }
+
+    super.stop();
+  }
+
+  @Override
+  public void configure(Context context) {
+    Configurables.ensureRequiredNonNull(
+        context, SyslogSourceConfigurationConstants.CONFIG_PORT);
+    port = context.getInteger(SyslogSourceConfigurationConstants.CONFIG_PORT);
+    host = context.getString(SyslogSourceConfigurationConstants.CONFIG_HOST);
+    formaterProp = context.getSubProperties(
+        SyslogSourceConfigurationConstants.CONFIG_FORMAT_PREFIX);
+  }
+
+}
