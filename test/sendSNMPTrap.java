@@ -52,7 +52,7 @@ public class sendSNMPTrap
     sendSNMPTrap snmp4JTrap = new sendSNMPTrap();
 
     /* Sending V1 Trap */
-    snmp4JTrap.sendSnmpV1Trap();
+    //snmp4JTrap.sendSnmpV1Trap();
 
     /* Sending V2 Trap */
     snmp4JTrap.sendSnmpV2Trap();

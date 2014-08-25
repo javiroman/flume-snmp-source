@@ -27,6 +27,7 @@ package org.apache.flume.source;
 
 import java.net.InetSocketAddress;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -34,6 +35,7 @@ import org.apache.flume.ChannelException;
 import org.apache.flume.Context;
 import org.apache.flume.CounterGroup;
 import org.apache.flume.Event;
+import org.apache.flume.event.SimpleEvent;
 import org.apache.flume.EventDrivenSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.Configurables;
@@ -52,37 +54,50 @@ import org.jboss.netty.channel.socket.oio.OioDatagramChannelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class SNMPTrap AbstractSource
+public class SNMPTrapSource extends AbstractSource
       implements EventDrivenSource, Configurable {
 
-  private int port;
+  private String bindAddress;
+  private int bindPort;
+  private static final int DEFAULT_PORT = 5140;
+  private static final String DEFAULT_BIND = "127.0.0.1";
+
   private int maxsize = 1 << 16; // 64k is max allowable in RFC 5426
-  private String host = null;
   private Channel nettyChannel;
   private Map<String, String> formaterProp;
 
   private static final Logger logger = LoggerFactory
-      .getLogger(SNMPTrap.class);
+      .getLogger(SNMPTrapSource.class);
 
   private CounterGroup counterGroup = new CounterGroup();
 
-  public class syslogHandler extends SimpleChannelHandler {
-
-    private SyslogUtils syslogUtils = new SyslogUtils(true);
-
-    public void setFormater(Map<String, String> prop) {
-      syslogUtils.addFormats(prop);
-    }
-
+  public class snmptrapHandler extends SimpleChannelHandler {
     @Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent mEvent) {
       try {
-        syslogUtils.setEventSize(maxsize);
-        Event e = syslogUtils.extractEvent((ChannelBuffer)mEvent.getMessage());
-        if (e == null) {
+        byte[] message;
+        Map <String, String> headers;
+        Event event;
+
+        ChannelBuffer in = (ChannelBuffer) mEvent.getMessage();
+
+        message = new byte[1];
+
+        while (in.readable()) {
+            message[0] = in.readByte();
+        }
+
+        event = new SimpleEvent();
+        headers = new HashMap<String, String>();
+        headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
+        logger.info("Message: {}", message);
+        event.setBody(message);
+        event.setHeaders(headers);
+
+        if (event == null) {
           return;
         }
-        getChannelProcessor().processEvent(e);
+        getChannelProcessor().processEvent(event);
         counterGroup.incrementAndGet("events.success");
       } catch (ChannelException ex) {
         counterGroup.incrementAndGet("events.dropped");
@@ -97,8 +112,9 @@ public class SNMPTrap AbstractSource
     // setup Netty server
     ConnectionlessBootstrap serverBootstrap = new ConnectionlessBootstrap
         (new OioDatagramChannelFactory(Executors.newCachedThreadPool()));
-    final syslogHandler handler = new syslogHandler();
-    handler.setFormater(formaterProp);
+
+    final snmptrapHandler handler = new snmptrapHandler();
+    
     serverBootstrap.setPipelineFactory(new ChannelPipelineFactory() {
       @Override
       public ChannelPipeline getPipeline() {
@@ -106,18 +122,14 @@ public class SNMPTrap AbstractSource
       }
      });
 
-    if (host == null) {
-      nettyChannel = serverBootstrap.bind(new InetSocketAddress(port));
-    } else {
-      nettyChannel = serverBootstrap.bind(new InetSocketAddress(host, port));
-    }
+    nettyChannel = serverBootstrap.bind(new InetSocketAddress(bindAddress, bindPort));
 
     super.start();
   }
 
   @Override
   public void stop() {
-    logger.info("Syslog UDP Source stopping...");
+    logger.info("SNMPTrap Source stopping...");
     logger.info("Metrics:{}", counterGroup);
     if (nettyChannel != null) {
       nettyChannel.close();
@@ -135,12 +147,13 @@ public class SNMPTrap AbstractSource
 
   @Override
   public void configure(Context context) {
-    Configurables.ensureRequiredNonNull(
-        context, SyslogSourceConfigurationConstants.CONFIG_PORT);
-
-    port = context.getInteger(SyslogSourceConfigurationConstants.CONFIG_PORT);
-    host = context.getString(SyslogSourceConfigurationConstants.CONFIG_HOST);
-
+        /*
+         * Default is to listen on UDP port 162 on all IPv4 interfaces. 
+         * Since 162 is a privileged port, snmptrapd must typically be run as root. 
+         * Or change to non-privileged port > 1024.
+         */
+        bindAddress = context.getString("bind", DEFAULT_BIND);
+        bindPort = context.getInteger("port", DEFAULT_PORT);
   }
 
 }
