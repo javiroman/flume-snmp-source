@@ -27,12 +27,17 @@ import org.apache.flume.PollableSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.event.SimpleEvent;
 import org.apache.flume.source.AbstractSource;
+import org.apache.flume.Context;
+import com.google.common.collect.ImmutableMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SNMPQuerySource extends AbstractSource implements 
     Configurable, PollableSource {
+
+    private static final Logger logger = LoggerFactory
+        .getLogger(SNMPTrapSource.class);
 
     @Override
     public void start() {
@@ -46,7 +51,6 @@ public class SNMPQuerySource extends AbstractSource implements
         // (e.g. releasing resources or nulling-out field values) ..
         super.stop();
     }
-
 
     @Override
     public Status process() throws EventDeliveryException {
@@ -79,6 +83,23 @@ public class SNMPQuerySource extends AbstractSource implements
 
     @Override
     public void configure(Context context) {
+        ImmutableMap<String, String> parameters;
+        String baseString = "oid";
+        boolean notFound = true;
+        int i = 0;
+
+        parameters = context.getParameters();
+        logger.info("parameters: " + parameters); 
+
+        do {
+            i++ ;
+            if (!parameters.containsKey(baseString + i)) {
+                notFound = false;
+            } else {
+                logger.info("parameter: " + parameters.get(baseString + i)); 
+            }
+        } while (notFound);
+
     }
 }
 
