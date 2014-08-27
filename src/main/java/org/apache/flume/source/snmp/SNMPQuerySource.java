@@ -16,28 +16,69 @@
  * specific language governing permissions and limitations
  * under the License.
  ****************************************************************/
-package org.apache.flume.source.snmp;
+package org.apache.flume.source;
 
+import org.apache.flume.ChannelException;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
+import org.apache.flume.event.SimpleEvent;
 import org.apache.flume.EventDeliveryException;
 import org.apache.flume.PollableSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.event.SimpleEvent;
 import org.apache.flume.source.AbstractSource;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 public class SNMPQuerySource extends AbstractSource implements 
     Configurable, PollableSource {
 
-	public Status process() throws EventDeliveryException {
+    @Override
+    public void start() {
+        // Initialize the connection to the external client
+        super.start();
+    }
 
-		return Status.READY;
-	}
+    @Override
+    public void stop() {
+        // Disconnect from external client and do any additional cleanup
+        // (e.g. releasing resources or nulling-out field values) ..
+        super.stop();
+    }
 
-	public void configure(Context context) {
-		// fill
-	}
+
+    @Override
+    public Status process() throws EventDeliveryException {
+        Status status = null;
+
+        try {
+            // This try clause includes whatever Channel operations you want to do
+
+            // Receive new data
+            Event e = new SimpleEvent(); 
+
+            // Store the Event into this Source's associated Channel(s)
+            getChannelProcessor().processEvent(e);
+
+            status = Status.READY;
+
+        } catch (Throwable t) {
+
+            // Log exception, handle individual exceptions as needed
+
+            status = Status.BACKOFF;
+
+            // re-throw all Errors
+            //if (t instanceof Error) {
+            //    throw (Error);
+            //}
+        }
+        return status;
+    }
+
+    @Override
+    public void configure(Context context) {
+    }
 }
+

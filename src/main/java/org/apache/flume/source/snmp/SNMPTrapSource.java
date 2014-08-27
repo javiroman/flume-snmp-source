@@ -34,7 +34,6 @@ import org.apache.flume.event.SimpleEvent;
 import org.apache.flume.EventDrivenSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.Configurables;
-import org.apache.flume.source.SyslogUtils;
 
 import org.snmp4j.CommandResponder;
 import org.snmp4j.CommandResponderEvent;
@@ -147,18 +146,18 @@ public class SNMPTrapSource extends AbstractSource
                     Map <String, String> headers;
                     StringBuilder stringBuilder = new StringBuilder();
 
-		    // getVariableBindings: Gets the variable binding vector.
+		            // getVariableBindings: Gets the variable binding vector.
                     Vector<? extends VariableBinding> vbs = pdu.getVariableBindings();
                     for (VariableBinding vb : vbs) {
-			// To extract only the value of the OID
+			            // To extract only the value of the OID
                         //stringBuilder.append(vb.getVariable().toString());
                         stringBuilder.append(vb.toString() + ",");
                     }
 
                     String messageString = stringBuilder.toString();
 
-		    // trick: remove the last comma
-		    messageString = messageString.replaceAll(",$", "");
+                    // trick: remove the last comma
+                    messageString = messageString.replaceAll(",$", "");
 
                     byte[] message = messageString.getBytes();
 
@@ -186,7 +185,7 @@ public class SNMPTrapSource extends AbstractSource
                 }
 
                 logger.info("Trap Type = " + pdu.getType());
-                logger.info("Variable Bindings = " + vbs;
+                logger.info("Variable Bindings = " + pdu.getVariableBindings());
 
                 int pduType = pdu.getType();
 
@@ -201,12 +200,12 @@ public class SNMPTrapSource extends AbstractSource
                     try {
                         System.out.println(cmdRespEvent.getPDU());
                         cmdRespEvent.getMessageDispatcher()
-				.returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
+				            .returnResponsePdu(cmdRespEvent.getMessageProcessingModel(),
                                 	cmdRespEvent.getSecurityModel(), 
                                 	cmdRespEvent.getSecurityName(), 
                                 	cmdRespEvent.getSecurityLevel(),
                                 	pdu, cmdRespEvent.getMaxSizeResponsePDU(), 
-					ref, statusInformation);
+                                    ref, statusInformation);
                     }
                     catch (MessageException ex) {
                         System.err.println("Error while sending response: " + ex.getMessage());
@@ -251,3 +250,4 @@ public class SNMPTrapSource extends AbstractSource
     }
 
 }
+

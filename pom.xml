@@ -13,6 +13,7 @@
   </properties>
 
   <dependencies>
+
     <dependency>
     	<groupId>org.apache.flume</groupId>
     	<artifactId>flume-ng-core</artifactId>
@@ -24,12 +25,14 @@
 	<artifactId>snmp4j</artifactId>
 	<version>1.10.1</version>
     </dependency>
+
   </dependencies>
 
   <build>
-	  <testSourceDirectory>${basedir}/test/</testSourceDirectory>
+      
+    <testSourceDirectory>${basedir}/test/</testSourceDirectory>
 
-<plugins>
+    <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -40,5 +43,6 @@
         </configuration>
       </plugin>
     </plugins>
+    
   </build>
 </project>
