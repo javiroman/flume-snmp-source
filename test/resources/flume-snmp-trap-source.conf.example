@@ -1,5 +1,5 @@
 # Name the components on this agent
-agent.sources = source1 source2
+agent.sources = source1 
 agent.sinks = sink1
 agent.channels = channel1
 
@@ -7,16 +7,6 @@ agent.channels = channel1
 agent.sources.source1.type = org.apache.flume.source.SNMPTrapSource
 agent.sources.source1.bind = 127.0.0.1
 agent.sources.source1.port = 5140
-
-agent.sources.source2.type = org.apache.flume.source.SNMPQuerySource
-agent.sources.source2.host = 127.0.0.1
-agent.sources.source3.port = 161
-agent.sources.source1.oid1 = 01.1.1.1.1
-agent.sources.source1.oid2 = 02.1.1.1.1
-agent.sources.source1.oid3 = 03.1.1.1.1
-agent.sources.source1.oid4 = 04.1.1.1.1
-agent.sources.source1.oid5 = 05.1.1.1.1
-agent.sources.source1.oid6 = 06.1.1.1.1
 
 # The channel
 agent.channels.channel1.type = memory
@@ -26,7 +16,6 @@ agent.sinks.sink1.type = logger
 
 # Bind the source and sink to the channel
 agent.sources.source1.channels = channel1
-agent.sources.source2.channels = channel1
 agent.sinks.sink1.channel = channel1
 
 
