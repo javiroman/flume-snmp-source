@@ -46,7 +46,7 @@ public class testSNMPGetBulk
 	    CommunityTarget target = new CommunityTarget();
 	    target.setCommunity(new OctetString("public"));
 	    target.setVersion(SnmpConstants.version2c);
-	    target.setAddress(new UdpAddress("22.79.52.119/161"));
+	    target.setAddress(new UdpAddress("23.23.52.11/161"));
 	    target.setTimeout(3000);    //3s
 	    target.setRetries(1);
 

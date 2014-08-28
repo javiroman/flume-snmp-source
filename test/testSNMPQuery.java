@@ -32,7 +32,7 @@ import org.snmp4j.transport.DefaultUdpTransportMapping;
 
 public class testSNMPQuery
 {
-  private static String  ipAddress  = "22.79.52.119";
+  private static String  ipAddress  = "23.23.52.11";
   private static String  port    = "161";
   private static String  oidValue  = "1.3.6.1.4.1.2000.1.2.5.1.3"; 
   private static int    snmpVersion  = SnmpConstants.version2c;

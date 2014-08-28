@@ -52,7 +52,7 @@ public class testSNMPQuery2 {
 		 * Port 161 is used for Read and Other operations
 		 * Port 162 is used for the trap generation
 		 */
-		testSNMPQuery2 client = new testSNMPQuery2("udp:22.79.52.119/161");
+		testSNMPQuery2 client = new testSNMPQuery2("udp:23.23.52.11/161");
 		client.start();
 
 		String sysDescr = client.getAsString(new OID("1.3.6.1.4.1.2000.1.2.5.1.3"));
