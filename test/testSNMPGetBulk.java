@@ -66,21 +66,16 @@ public class testSNMPGetBulk
 	    PDU response = responseEvent.getResponse();
 
 	    if (response == null) {
-		System.out.println("TimeOut...");
-	    } 
-	    else 
-	    {
-		if (response.getErrorStatus() == PDU.noError) 
-		{
-		    Vector<? extends VariableBinding> vbs = response.getVariableBindings();
-		    for (VariableBinding vb : vbs) {
-			System.out.println(vb.getVariable().toString());
+		    System.out.println("TimeOut...");
+	    } else {
+		    if (response.getErrorStatus() == PDU.noError) {
+                Vector<? extends VariableBinding> vbs = response.getVariableBindings();
+                for (VariableBinding vb : vbs) {
+                    System.out.println(vb.getVariable().toString());
+		        }
+		    } else {
+		        System.out.println("Error:" + response.getErrorStatusText());
 		    }
-		} 
-		else 
-		{
-		    System.out.println("Error:" + response.getErrorStatusText());
-		}
 	    }
 	}
 }

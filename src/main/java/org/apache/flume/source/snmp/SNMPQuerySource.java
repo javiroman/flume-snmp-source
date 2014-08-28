@@ -18,7 +18,11 @@
  ****************************************************************/
 package org.apache.flume.source;
 
+import java.io.IOException;
+import java.util.Vector;
+
 import org.apache.flume.ChannelException;
+import org.apache.flume.CounterGroup;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.event.SimpleEvent;
@@ -30,18 +34,61 @@ import org.apache.flume.source.AbstractSource;
 import org.apache.flume.Context;
 import com.google.common.collect.ImmutableMap;
 
+import org.snmp4j.CommunityTarget;
+import org.snmp4j.PDU;
+import org.snmp4j.Snmp;
+import org.snmp4j.TransportMapping;
+import org.snmp4j.event.ResponseEvent;
+import org.snmp4j.mp.SnmpConstants;
+import org.snmp4j.smi.Integer32;
+import org.snmp4j.smi.OID;
+import org.snmp4j.smi.OctetString;
+import org.snmp4j.smi.UdpAddress;
+import org.snmp4j.smi.VariableBinding;
+import org.snmp4j.transport.DefaultUdpTransportMapping;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class SNMPQuerySource extends AbstractSource implements 
     Configurable, PollableSource {
 
+    private String bindAddress;
+    private int bindPort;
+    private int delayQuery;
+    private VariableBinding[] odisArray;
+    private PDU pdu;
+    private CommunityTarget target;
+    private Snmp snmp;
+    private static final int DEFAULT_PORT = 161;
+    private static final int DEFAULT_DELAY = 30; // seconds
+
     private static final Logger logger = LoggerFactory
         .getLogger(SNMPTrapSource.class);
+
 
     @Override
     public void start() {
         // Initialize the connection to the external client
+        try {
+            snmp = new Snmp(new DefaultUdpTransportMapping());
+            snmp.listen();
+
+            target = new CommunityTarget();
+            target.setCommunity(new OctetString("public"));
+            target.setVersion(SnmpConstants.version2c);
+            target.setAddress(new UdpAddress(bindAddress + "/" + bindPort));
+            target.setTimeout(3000);    //3s
+            target.setRetries(1);
+
+            pdu.setType(PDU.GETBULK);
+            pdu.setMaxRepetitions(1); 
+            pdu.setNonRepeaters(0);
+
+        } catch (IOException ex) {
+            //
+        }
+
         super.start();
     }
 
@@ -55,22 +102,41 @@ public class SNMPQuerySource extends AbstractSource implements
     @Override
     public Status process() throws EventDeliveryException {
         Status status = null;
+        CounterGroup counterGroup = new CounterGroup();
 
         try {
             // This try clause includes whatever Channel operations you want to do
+            Event e = new SimpleEvent(); 
+
+            ResponseEvent responseEvent = snmp.send(pdu, target);
+            PDU response = responseEvent.getResponse();
+
+            if (response == null) {
+                System.out.println("TimeOut...");
+            } else {
+                if (response.getErrorStatus() == PDU.noError) {
+                    Vector<? extends VariableBinding> vbs = response.getVariableBindings();
+                    for (VariableBinding vb : vbs) {
+                        System.out.println(vb.getVariable().toString());
+                    }
+                } else {
+                    System.out.println("Error:" + response.getErrorStatusText());
+                }
+            }
 
             // Receive new data
-            Event e = new SimpleEvent(); 
 
             // Store the Event into this Source's associated Channel(s)
             getChannelProcessor().processEvent(e);
+            counterGroup.incrementAndGet("events.success");
 
+            Thread.sleep(delayQuery*1000);
             status = Status.READY;
 
-        } catch (Throwable t) {
-
+        } catch (ChannelException|IOException|java.lang.InterruptedException ex) {
+            counterGroup.incrementAndGet("events.dropped");
+            logger.error("Error writting to channel", ex);
             // Log exception, handle individual exceptions as needed
-
             status = Status.BACKOFF;
 
             // re-throw all Errors
@@ -91,15 +157,21 @@ public class SNMPQuerySource extends AbstractSource implements
         parameters = context.getParameters();
         logger.info("parameters: " + parameters); 
 
+        pdu = new PDU();
+
         do {
             i++ ;
             if (!parameters.containsKey(baseString + i)) {
                 notFound = false;
             } else {
                 logger.info("parameter: " + parameters.get(baseString + i)); 
+	            pdu.add(new VariableBinding(new OID(parameters.get(baseString + i)))); 
             }
         } while (notFound);
 
+        bindAddress = context.getString("host");
+        bindPort = context.getInteger("port", DEFAULT_PORT);
+        delayQuery = context.getInteger("delay", DEFAULT_DELAY);
     }
 }
 
