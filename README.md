@@ -36,7 +36,7 @@ SNMP GETBULK for performance.
 
     # The source
     agent.sources.source1.type = org.apache.flume.source.SNMPQuerySource
-    agent.sources.source1.host = 22.79.52.119
+    agent.sources.source1.host = 23.23.52.11
     agent.sources.source1.port = 161
     agent.sources.source1.delay = 30
     # Power Distribution Unit - PDU name

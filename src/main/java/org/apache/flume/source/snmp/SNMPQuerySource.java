@@ -67,6 +67,7 @@ public class SNMPQuerySource extends AbstractSource implements
     private PDU pdu;
     private CommunityTarget target;
     private Snmp snmp;
+    private CounterGroup counterGroup;
     private static final int DEFAULT_PORT = 161;
     private static final int DEFAULT_DELAY = 30; // seconds
 
@@ -101,15 +102,16 @@ public class SNMPQuerySource extends AbstractSource implements
 
     @Override
     public void stop() {
-        // Disconnect from external client and do any additional cleanup
-        // (e.g. releasing resources or nulling-out field values) ..
+        logger.info("SNMPQuery Source stopping...");
+        logger.info("Metrics:{}", counterGroup);
+
         super.stop();
     }
 
     @Override
     public Status process() throws EventDeliveryException {
         Status status = null;
-        CounterGroup counterGroup = new CounterGroup();
+        counterGroup = new CounterGroup();
 
         try {
             // This try clause includes whatever Channel operations you want to do
@@ -157,7 +159,7 @@ public class SNMPQuerySource extends AbstractSource implements
             Thread.sleep(delayQuery*1000);
             status = Status.READY;
 
-        } catch (ChannelException|IOException|java.lang.InterruptedException ex) {
+        } catch (ChannelException|IOException|InterruptedException ex) {
             counterGroup.incrementAndGet("events.dropped");
             logger.error("Error writting to channel", ex);
             // Log exception, handle individual exceptions as needed
