@@ -20,6 +20,13 @@ package org.apache.flume.source;
 
 import java.io.IOException;
 import java.util.Vector;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.Date;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 
 import org.apache.flume.ChannelException;
 import org.apache.flume.CounterGroup;
@@ -106,28 +113,45 @@ public class SNMPQuerySource extends AbstractSource implements
 
         try {
             // This try clause includes whatever Channel operations you want to do
-            Event e = new SimpleEvent(); 
+            Event event = new SimpleEvent(); 
+            Map <String, String> headers = new HashMap<String, String>();
+            StringBuilder stringBuilder = new StringBuilder();
 
             ResponseEvent responseEvent = snmp.send(pdu, target);
             PDU response = responseEvent.getResponse();
 
+            DateFormat dateFormat = new SimpleDateFormat("MM dd HH:mm:ss yyyy");
+            Date date = new Date();
+
+            stringBuilder.append(date + ",");
+            stringBuilder.append(bindAddress + ",");
+
             if (response == null) {
-                System.out.println("TimeOut...");
+                logger.info("TimeOut...");
             } else {
                 if (response.getErrorStatus() == PDU.noError) {
                     Vector<? extends VariableBinding> vbs = response.getVariableBindings();
                     for (VariableBinding vb : vbs) {
-                        System.out.println(vb.getVariable().toString());
-                    }
+                        //System.out.println(vb.getVariable().toString());
+                        stringBuilder.append(vb.getVariable().toString() + ",");
+                                           }
                 } else {
-                    System.out.println("Error:" + response.getErrorStatusText());
+                    logger.info("Error:" + response.getErrorStatusText());
                 }
             }
 
-            // Receive new data
+            String messageString = stringBuilder.toString();
+            // trick: remove the last comma
+            messageString = messageString.replaceAll(",$", "");
+            byte[] message = messageString.getBytes();
+
+            headers.put("timestamp", String.valueOf(System.currentTimeMillis()));
+            logger.info("Message: {}", messageString);
+            event.setBody(message);
+            event.setHeaders(headers);
 
             // Store the Event into this Source's associated Channel(s)
-            getChannelProcessor().processEvent(e);
+            getChannelProcessor().processEvent(event);
             counterGroup.incrementAndGet("events.success");
 
             Thread.sleep(delayQuery*1000);
