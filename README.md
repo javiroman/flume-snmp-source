@@ -74,7 +74,7 @@ SNMP GETBULK for performance.
 
 The message passed to the Channel is build with the format:
 
-    date,oid1,oid2,oid3, ....,oid15
+    current date,query host,oid1 answer,oid2 answer,oid3 answer, ....,oid15 answer
 
 
 
