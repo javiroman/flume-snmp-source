@@ -26,7 +26,7 @@ SNMP Trap Source usage example - Listen for generic SNMP Trap:
 	agent.sinks.sink1.channel = channel1
 
 
-SNMP Query Source usage example - SNMP Query to PDU data, the plugin is using
+SNMP Query Source usage example - SNMP Query for PDU data, the plugin is using
 SNMP GETBULK for performance.
 
     # Name the components on this agent
@@ -72,7 +72,9 @@ SNMP GETBULK for performance.
     agent.sinks.sink1.channel = channel1
 
 
+The message passed to the Channel is build with the format:
 
+    date,oid1,oid2,oid3, ....,oid15
 
 
 
